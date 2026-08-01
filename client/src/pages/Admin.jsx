@@ -41,7 +41,8 @@ export function Admin() {
 
   const handleCreateAdminUser = async (e) => {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
+    const formEl = e.currentTarget;
+    const f = new FormData(formEl);
     try {
       const newUser = await api('/admin/users', {
         method: 'POST',
@@ -54,25 +55,32 @@ export function Admin() {
       });
       showToast(`Account "${newUser.email}" (${newUser.role}) created successfully!`, 'success');
       setShowAdminUserModal(false);
-      e.currentTarget.reset();
+      if (formEl) formEl.reset();
     } catch (x) {
-      showToast('Failed to create account: ' + (x?.error || 'Error'), 'error');
+      showToast('Failed to create account: ' + (x?.error || x?.message || 'Error'), 'error');
     }
   };
 
+  // NOTE: this no longer shows its own toast on failure. It's called by
+  // every create/update/save handler AFTER that action already succeeded,
+  // purely to refresh the on-screen catalog. It used to show an error toast
+  // on any hiccup here, which silently overwrote the real success toast
+  // from the action that just worked — that was the "it got created but
+  // the toast says error" bug. A failed background refresh is now just
+  // logged, not shown as if the create/update itself failed.
   const load = (targetCategoryId) => {
     return api('/admin/catalog')
       .then((x) => {
         setCatalog(x);
         setActiveCategory((currentActive) => {
-          const matchId = targetCategoryId || currentActive?.id;
-          if (!matchId) return x.categories[0] || null;
-          return x.categories.find((c) => c.id === matchId) || x.categories[0] || null;
+          const matchId = targetCategoryId !== undefined && targetCategoryId !== null ? targetCategoryId : currentActive?.id;
+          if (matchId === undefined || matchId === null) return x.categories[0] || null;
+          return x.categories.find((c) => String(c.id) === String(matchId)) || x.categories[0] || null;
         });
         return x;
       })
       .catch((err) => {
-        showToast('Error loading catalog: ' + (err?.error || 'Access denied'), 'error');
+        console.error('Failed to reload catalog:', err);
       });
   };
 
@@ -111,49 +119,57 @@ export function Admin() {
       showToast(`Category schema for "${activeCategory.name}" saved successfully!`, 'success');
       await load(activeCategory.id);
     } catch (x) {
-      showToast('Failed to save schema: ' + (x?.error || 'Unknown error'), 'error');
+      showToast('Failed to save schema: ' + (x?.error || x?.message || 'Unknown error'), 'error');
     }
   };
 
   const handleCreateCategory = async (e) => {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
+    const formEl = e.currentTarget;
+    const f = new FormData(formEl);
+    const name = (f.get('name') || '').trim();
+    if (!name) return;
+
     try {
       const newCat = await api('/admin/categories', {
         method: 'POST',
         body: JSON.stringify({
-          name: f.get('name'),
-          icon: f.get('icon') || '◈',
-          description: f.get('description')
+          name: name,
+          icon: (f.get('icon') || '').trim() || '◈',
+          description: (f.get('description') || '').trim()
         })
       });
       setShowCategoryModal(false);
-      e.currentTarget.reset();
-      await load(newCat.id);
+      if (formEl) formEl.reset();
       showToast(`Category "${newCat.name}" created and selected!`, 'success');
+      await load(newCat.id);
     } catch (x) {
-      showToast('Category creation failed: ' + (x?.error || 'Error'), 'error');
+      showToast('Category creation failed: ' + (x?.error || x?.message || 'Error'), 'error');
     }
   };
 
   const handleUpdateCategory = async (e) => {
     e.preventDefault();
     if (!editingCategory) return;
-    const f = new FormData(e.currentTarget);
+    const formEl = e.currentTarget;
+    const f = new FormData(formEl);
+    const name = (f.get('name') || '').trim();
+    if (!name) return;
+
     try {
       const updated = await api('/admin/categories/' + editingCategory.id, {
         method: 'PATCH',
         body: JSON.stringify({
-          name: f.get('name'),
-          icon: f.get('icon') || '◈',
-          description: f.get('description')
+          name: name,
+          icon: (f.get('icon') || '').trim() || '◈',
+          description: (f.get('description') || '').trim()
         })
       });
       setEditingCategory(null);
-      await load(updated.id);
       showToast(`Category "${updated.name}" updated successfully!`, 'success');
+      await load(updated.id);
     } catch (x) {
-      showToast('Failed to update category: ' + (x?.error || 'Error'), 'error');
+      showToast('Failed to update category: ' + (x?.error || x?.message || 'Error'), 'error');
     }
   };
 
@@ -166,61 +182,66 @@ export function Admin() {
       showToast(`"${cat.name}" is now ${!cat.active ? 'active' : 'inactive'}.`, 'info');
       await load(activeCategory.id);
     } catch (x) {
-      showToast('Failed to update category: ' + (x?.error || 'Error'), 'error');
+      showToast('Failed to update category: ' + (x?.error || x?.message || 'Error'), 'error');
     }
   };
 
   const handleCreateField = async (e) => {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
+    const formEl = e.currentTarget;
+    const f = new FormData(formEl);
     const optionsRaw = f.get('options') || '';
-    const label = f.get('label');
+    const label = (f.get('label') || '').trim();
+    const rawKey = (f.get('key') || '').trim();
 
     try {
-      await api('/admin/fields', {
+      const createdField = await api('/admin/fields', {
         method: 'POST',
         body: JSON.stringify({
           label: label,
-          key: f.get('key'),
+          key: rawKey,
           type: f.get('type'),
-          placeholder: f.get('placeholder') || '',
-          helpText: f.get('helpText') || '',
+          placeholder: (f.get('placeholder') || '').trim(),
+          helpText: (f.get('helpText') || '').trim(),
           options: optionsRaw.split(',').map((s) => s.trim()).filter(Boolean),
           rules: readRulesFromForm(f)
         })
       });
-      e.currentTarget.reset();
-      showToast(`Field "${label}" created and added to library!`, 'success');
+      if (formEl) formEl.reset();
+      showToast(`Field "${createdField.label || label}" (${createdField.key}) created and added to library!`, 'success');
       await load(activeCategory.id);
     } catch (x) {
-      showToast(x?.error || 'Failed to create field', 'error');
+      showToast(x?.error || x?.message || 'Failed to create field', 'error');
     }
   };
 
   const handleUpdateField = async (e) => {
     e.preventDefault();
     if (!editingField) return;
-    const f = new FormData(e.currentTarget);
+    const formEl = e.currentTarget;
+    const f = new FormData(formEl);
     const optionsRaw = f.get('options') || '';
+    const label = (f.get('label') || '').trim();
+    const rawKey = (f.get('key') || '').trim();
 
     try {
-      await api('/admin/fields/' + editingField.id, {
+      const updated = await api('/admin/fields/' + editingField.id, {
         method: 'PATCH',
         body: JSON.stringify({
-          label: f.get('label'),
-          key: f.get('key'),
+          label: label,
+          key: rawKey,
           type: f.get('type'),
-          placeholder: f.get('placeholder') || '',
-          helpText: f.get('helpText') || '',
+          placeholder: (f.get('placeholder') || '').trim(),
+          helpText: (f.get('helpText') || '').trim(),
           options: optionsRaw.split(',').map((s) => s.trim()).filter(Boolean),
           rules: readRulesFromForm(f)
         })
       });
       setEditingField(null);
-      showToast(`Field "${editingField.key}" updated successfully.`, 'success');
+      showToast(`Field "${updated.label || label}" (${updated.key}) updated successfully.`, 'success');
       await load(activeCategory.id);
     } catch (x) {
-      showToast(x?.error || 'Failed to update field', 'error');
+      showToast(x?.error || x?.message || 'Failed to update field', 'error');
     }
   };
 
@@ -310,12 +331,15 @@ export function Admin() {
                         type="checkbox"
                         checked={!!inUse}
                         onChange={() => {
+                          // Local UI state only — this does NOT save to the
+                          // server. Nothing is persisted until "Save category
+                          // schema" is clicked, and no toast fires here
+                          // anymore, since seeing a toast made it look like a
+                          // save had already happened when it hadn't.
                           if (inUse) {
                             updateCategoryFieldsState(categoryFields.filter((x) => x.id !== f.id));
-                            showToast(`Removed "${f.label}" from ${activeCategory.name} schema`, 'info');
                           } else {
                             updateCategoryFieldsState([...categoryFields, { ...f, required: false, conditional: null }]);
-                            showToast(`Added "${f.label}" to ${activeCategory.name} schema`, 'info');
                           }
                         }}
                       />

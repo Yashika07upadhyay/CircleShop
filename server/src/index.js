@@ -280,14 +280,21 @@ app.post('/api/admin/users', requireRole('admin'), (req, res) => {
 });
 
 app.post('/api/admin/categories', requireRole('admin'), (req, res) => {
-  const { name, description = '', icon = '◈' } = req.body;
-  const slug = name?.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-  if (!name || !slug) return res.status(400).json({ error: 'Category name is required' });
+  const { name, description = '', icon = '◈' } = req.body || {};
+  const safeName = (name || '').trim();
+  const slug = safeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  if (!safeName || !slug) return res.status(400).json({ error: 'Category name is required' });
+  const safeDescription = (description || '').trim();
+  const safeIcon = (icon || '').trim() || '◈';
   try {
-    const info = db.prepare('INSERT INTO categories(name,slug,description,icon) VALUES(?,?,?,?)').run(name.trim(), slug, description.trim(), icon.trim() || '◈');
+    const info = db.prepare('INSERT INTO categories(name,slug,description,icon) VALUES(?,?,?,?)').run(safeName, slug, safeDescription, safeIcon);
     res.status(201).json(db.prepare('SELECT * FROM categories WHERE id=?').get(info.lastInsertRowid));
-  } catch {
-    res.status(409).json({ error: 'A category with that name already exists' });
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || String(err).includes('UNIQUE constraint failed')) {
+      return res.status(409).json({ error: 'A category with that name already exists' });
+    }
+    console.error('Category creation error:', err);
+    res.status(500).json({ error: err.message || 'Failed to create category' });
   }
 });
 
@@ -304,30 +311,45 @@ app.patch('/api/admin/categories/:id', requireRole('admin'), (req, res) => {
   const icon = req.body.icon !== undefined ? (req.body.icon || '◈') : current.icon;
   const active = req.body.active !== undefined ? Number(!!req.body.active) : current.active;
 
-  if (!name?.trim()) return res.status(400).json({ error: 'Category name is required' });
-  const slug = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  const safeName = (name || '').trim();
+  if (!safeName) return res.status(400).json({ error: 'Category name is required' });
+  const slug = safeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   if (!slug) return res.status(400).json({ error: 'Category name is required' });
 
   try {
     db.prepare('UPDATE categories SET name=?, slug=?, description=?, icon=?, active=? WHERE id=?')
-      .run(name.trim(), slug, (description || '').trim(), icon.trim() || '◈', active, req.params.id);
+      .run(safeName, slug, (description || '').trim(), (icon || '').trim() || '◈', active, req.params.id);
     res.json(db.prepare('SELECT * FROM categories WHERE id=?').get(req.params.id));
-  } catch {
-    res.status(409).json({ error: 'A category with that name already exists' });
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || String(err).includes('UNIQUE constraint failed')) {
+      return res.status(409).json({ error: 'A category with that name already exists' });
+    }
+    console.error('Category update error:', err);
+    res.status(500).json({ error: err.message || 'Failed to update category' });
   }
 });
 
 app.post('/api/admin/fields', requireRole('admin'), (req, res) => {
-  const { key, label, type, options = [], rules = {}, placeholder = '', helpText = '' } = req.body;
-  if (!key || !label || !type) return res.status(400).json({ error: 'Key, label and type are required' });
+  const { key, label, type, options = [], rules = {}, placeholder = '', helpText = '' } = req.body || {};
+  const safeLabel = (label || '').trim();
+  const rawKey = (key || '').trim();
+  const safeKey = rawKey.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/(^_|_$)/g, '');
+
+  if (!safeKey || !safeLabel || !type) {
+    return res.status(400).json({ error: 'Key, label and type are required' });
+  }
   try {
     const info = db.prepare(`
       INSERT INTO fields(key,label,type,options_json,rules_json,placeholder,help_text)
       VALUES(?,?,?,?,?,?,?)
-    `).run(key.trim(), label.trim(), type, JSON.stringify(options), JSON.stringify(rules), placeholder.trim(), helpText.trim());
+    `).run(safeKey, safeLabel, type, JSON.stringify(options || []), JSON.stringify(rules || {}), (placeholder || '').trim(), (helpText || '').trim());
     res.status(201).json(parse(db.prepare('SELECT * FROM fields WHERE id=?').get(info.lastInsertRowid)));
   } catch (err) {
-    res.status(409).json({ error: 'This field key already exists' });
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || String(err).includes('UNIQUE constraint failed')) {
+      return res.status(409).json({ error: 'This field key already exists' });
+    }
+    console.error('Field creation error:', err);
+    res.status(500).json({ error: err.message || 'Failed to create field' });
   }
 });
 
@@ -339,17 +361,14 @@ app.patch('/api/admin/fields/:id', requireRole('admin'), (req, res) => {
   const next = {
     ...parsedCurrent,
     ...req.body,
-    // The edit form always submits its complete intended rules object
-    // (min/max/minLength/maxLength/default), so a PATCH that includes
-    // `rules` REPLACES the stored rules wholesale rather than merging.
-    // Merging would mean clearing a value in the UI (e.g. removing a
-    // default) could never actually remove it — the old key would just
-    // get re-added by the merge. Falling back to the existing rules only
-    // covers a PATCH that omits `rules` entirely.
     rules: 'rules' in req.body ? (req.body.rules || {}) : parsedCurrent.rules
   };
 
-  if (!next.key || !next.label || !next.type) {
+  const safeLabel = (next.label || '').trim();
+  const rawKey = (next.key || '').trim();
+  const safeKey = rawKey.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/(^_|_$)/g, '');
+
+  if (!safeKey || !safeLabel || !next.type) {
     return res.status(400).json({ error: 'Key, label and type are required' });
   }
 
@@ -359,18 +378,22 @@ app.patch('/api/admin/fields/:id', requireRole('admin'), (req, res) => {
       SET key=?, label=?, type=?, options_json=?, rules_json=?, placeholder=?, help_text=?
       WHERE id=?
     `).run(
-      next.key.trim(),
-      next.label.trim(),
+      safeKey,
+      safeLabel,
       next.type,
       JSON.stringify(next.options || []),
       JSON.stringify(next.rules || {}),
-      next.placeholder || '',
-      next.helpText || next.help_text || '',
+      (next.placeholder || '').trim(),
+      (next.helpText || next.help_text || '').trim(),
       req.params.id
     );
     res.json(parse(db.prepare('SELECT * FROM fields WHERE id=?').get(req.params.id)));
   } catch (err) {
-    res.status(409).json({ error: 'That field key already exists' });
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || String(err).includes('UNIQUE constraint failed')) {
+      return res.status(409).json({ error: 'That field key already exists' });
+    }
+    console.error('Field update error:', err);
+    res.status(500).json({ error: err.message || 'Failed to update field' });
   }
 });
 
