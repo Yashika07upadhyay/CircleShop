@@ -1,14 +1,23 @@
 import React from 'react';
 
 export function DynamicField({ f, value, change, error, onBlur }) {
-  const set = (v) => {
-    change(f.key, v);
-    if (onBlur) onBlur(f.key, v);
+  const rules = f.rules || {};
+
+  const set = (v) => change(f.key, v);
+
+  const handleChange = (e) => {
+    set(e.target.value);
+    if (onBlur) onBlur(f.key, e.target.value);
   };
+
+  const handleBlur = (e) => {
+    if (onBlur) onBlur(f.key, e.target.value);
+  };
+
   const common = {
     value: value || '',
-    onChange: (e) => set(e.target.value),
-    onBlur: (e) => onBlur && onBlur(f.key, e.target.value),
+    onChange: handleChange,
+    onBlur: handleBlur,
     placeholder: f.placeholder || ''
   };
 
@@ -36,7 +45,10 @@ export function DynamicField({ f, value, change, error, onBlur }) {
               type="button"
               key={x}
               className={value === x ? 'selected' : ''}
-              onClick={() => set(x)}
+              onClick={() => {
+                set(x);
+                if (onBlur) onBlur(f.key, x);
+              }}
             >
               {x}
             </button>
@@ -49,25 +61,38 @@ export function DynamicField({ f, value, change, error, onBlur }) {
               <input
                 type="checkbox"
                 checked={(value || []).includes(x)}
-                onChange={(e) =>
-                  set(
-                    e.target.checked
-                      ? [...(value || []), x]
-                      : (value || []).filter((y) => y !== x)
-                  )
-                }
+                onChange={(e) => {
+                  const next = e.target.checked
+                    ? [...(value || []), x]
+                    : (value || []).filter((y) => y !== x);
+                  set(next);
+                  if (onBlur) onBlur(f.key, next);
+                }}
               />
               {x}
             </label>
           ))}
         </div>
       ) : f.type === 'textarea' ? (
-        <textarea {...common} />
+        <textarea
+          {...common}
+          {...(rules.maxLength ? { maxLength: rules.maxLength } : {})}
+        />
       ) : (
         <input
           type={f.type || 'text'}
           {...common}
-          {...(f.type === 'date' && (f.key === 'purchase_date' || f.key.includes('purchase'))
+          {...(f.type === 'number'
+            ? {
+                ...(rules.min != null ? { min: rules.min } : {}),
+                ...(rules.max != null ? { max: rules.max } : {})
+              }
+            : {
+                ...(rules.minLength ? { minLength: rules.minLength } : {}),
+                ...(rules.maxLength ? { maxLength: rules.maxLength } : {})
+              })}
+          {...(f.type === 'date' &&
+          (f.key === 'purchase_date' || f.key.includes('purchase'))
             ? { max: new Date().toISOString().split('T')[0] }
             : {})}
         />

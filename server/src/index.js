@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 const sessionUser = (req) => {
   const token = req.header('x-session-token');
@@ -145,41 +145,46 @@ app.patch('/api/listings/:id', requireAuth, (req, res) => {
 
 // Create Listing (Sellers & Admins)
 app.post('/api/listings', requireAuth, (req, res) => {
-  const payload = req.body;
-  const category = db.prepare('SELECT id FROM categories WHERE id=? AND active=1').get(payload.categoryId);
-  if (!category) return res.status(400).json({ error: 'Choose a valid category' });
+  try {
+    const payload = req.body;
+    const category = db.prepare('SELECT id FROM categories WHERE id=? AND active=1').get(payload.categoryId);
+    if (!category) return res.status(400).json({ error: 'Choose a valid category' });
 
-  const schema = categorySchema(category.id);
-  const errors = validateListing(payload, schema);
-  if (Object.keys(errors).length) return res.status(422).json({ error: 'Please fix the highlighted fields', errors });
+    const schema = categorySchema(category.id);
+    const errors = validateListing(payload, schema);
+    if (Object.keys(errors).length) return res.status(422).json({ error: 'Please fix the highlighted fields', errors });
 
-  const save = db.transaction(() => {
-    const r = db.prepare(`
-      INSERT INTO listings(user_id, category_id, title, description, price, condition, location, image_url)
-      VALUES(?,?,?,?,?,?,?,?)
-    `).run(
-      req.user.id,
-      category.id,
-      payload.title.trim(),
-      payload.description.trim(),
-      Math.round(Number(payload.price) * 100),
-      payload.condition,
-      payload.location.trim(),
-      payload.imageUrl || null
-    );
+    const save = db.transaction(() => {
+      const r = db.prepare(`
+        INSERT INTO listings(user_id, category_id, title, description, price, condition, location, image_url)
+        VALUES(?,?,?,?,?,?,?,?)
+      `).run(
+        req.user.id,
+        category.id,
+        payload.title.trim(),
+        payload.description.trim(),
+        Math.round(Number(payload.price) * 100),
+        payload.condition,
+        payload.location.trim(),
+        payload.imageUrl || null
+      );
 
-    const ins = db.prepare('INSERT INTO listing_attributes(listing_id,field_id,value_json) VALUES(?,?,?)');
-    schema.forEach(f => {
-      const value = payload.attributes?.[f.key];
-      if (value !== undefined && value !== '') {
-        ins.run(r.lastInsertRowid, f.id, JSON.stringify(value));
-      }
+      const ins = db.prepare('INSERT INTO listing_attributes(listing_id,field_id,value_json) VALUES(?,?,?)');
+      schema.forEach(f => {
+        const value = payload.attributes?.[f.key];
+        if (value !== undefined && value !== '') {
+          ins.run(r.lastInsertRowid, f.id, JSON.stringify(value));
+        }
+      });
+      return r.lastInsertRowid;
     });
-    return r.lastInsertRowid;
-  });
 
-  const id = save();
-  res.status(201).json({ id });
+    const id = save();
+    res.status(201).json({ id });
+  } catch (err) {
+    console.error('Listing creation error:', err);
+    res.status(500).json({ error: 'Failed to publish listing. Try a smaller image or try again.' });
+  }
 });
 
 // Interactive Messaging Endpoints
@@ -458,7 +463,7 @@ app.put('/api/admin/categories/:id/fields', requireRole('admin'), (req, res) => 
 
 // Authentication Endpoints
 app.post('/api/auth/register', (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { name, email, password } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'Empty spaces not allowed.' });
   }
@@ -477,9 +482,8 @@ app.post('/api/auth/register', (req, res) => {
 
   try {
     const hashedPassword = hashPassword(password);
-    const assignedRole = role === 'admin' ? 'admin' : 'user';
     const info = db.prepare('INSERT INTO users(name,email,password,role) VALUES(?,?,?,?)')
-      .run(name.trim(), email.toLowerCase().trim(), hashedPassword, assignedRole);
+      .run(name.trim(), email.toLowerCase().trim(), hashedPassword, 'user');
     const user = db.prepare('SELECT id, name, email, role FROM users WHERE id=?').get(info.lastInsertRowid);
     const token = generateToken(user);
     res.status(201).json({ token, user });
@@ -526,6 +530,9 @@ app.get(/^(?!\/api).*/, (req, res, next) => {
 
 app.use((err, _, res, __) => {
   console.error(err);
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'File too large. Please use an image under 4 MB.' });
+  }
   res.status(500).json({ error: 'Unexpected server error' });
 });
 

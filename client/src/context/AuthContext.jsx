@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getSession, setSession, onSessionExpired, api } from '../api/client';
+import { clearAllDrafts } from '../lib/listingValidation';
 
 const AuthContext = createContext(null);
 
@@ -17,6 +18,7 @@ export function AuthProvider({ children }) {
   // server no longer recognizes.
   useEffect(() => {
     return onSessionExpired(() => {
+      clearAllDrafts();
       setSessionState(null);
       setSessionExpired(true);
     });
@@ -27,7 +29,7 @@ export function AuthProvider({ children }) {
       method: 'POST',
       body: JSON.stringify(credentials)
     });
-    // Immediately persist to localStorage synchronously
+    clearAllDrafts();
     setSession(data);
     setSessionState(data);
     setSessionExpired(false);
@@ -39,7 +41,7 @@ export function AuthProvider({ children }) {
       method: 'POST',
       body: JSON.stringify(userData)
     });
-    // Immediately persist to localStorage synchronously
+    clearAllDrafts();
     setSession(data);
     setSessionState(data);
     setSessionExpired(false);
@@ -52,6 +54,7 @@ export function AuthProvider({ children }) {
     } catch {
       // Ignore network errors during logout
     }
+    clearAllDrafts();
     setSession(null);
     setSessionState(null);
     setSessionExpired(false);

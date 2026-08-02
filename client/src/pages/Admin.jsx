@@ -320,7 +320,7 @@ export function Admin() {
         <section className="panel">
           <h2>{activeCategory.name} schema</h2>
           <p className="muted">
-            Select fields for this category, set requirement rules, adjust display order, and configure conditional logic.
+            Select fields for this category, set requirement rules, and configure conditional logic.
           </p>
           {!activeCategory.active && (
             <p className="error">
@@ -331,7 +331,6 @@ export function Admin() {
           <div className="field-list">
             {catalog.fields.map((f) => {
               const inUse = categoryFields.find((x) => x.id === f.id);
-              const at = categoryFields.findIndex((x) => x.id === f.id);
 
               return (
                 <div className={'catalog-field ' + (inUse ? 'included' : '')} key={f.id}>
@@ -381,26 +380,6 @@ export function Admin() {
                         />{' '}
                         Required
                       </label>
-                      <button
-                        disabled={at === 0}
-                        onClick={() =>
-                          updateCategoryFieldsState(
-                            categoryFields.map((x, i) => (i === at ? categoryFields[at - 1] : i === at - 1 ? categoryFields[at] : x))
-                          )
-                        }
-                      >
-                        ↑
-                      </button>
-                      <button
-                        disabled={at === categoryFields.length - 1}
-                        onClick={() =>
-                          updateCategoryFieldsState(
-                            categoryFields.map((x, i) => (i === at ? categoryFields[at + 1] : i === at + 1 ? categoryFields[at] : x))
-                          )
-                        }
-                      >
-                        ↓
-                      </button>
                       <button
                         onClick={() => setEditingField(f)}
                         style={{ background: '#f0f4ec', color: 'var(--forest)' }}

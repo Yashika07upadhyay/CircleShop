@@ -16,7 +16,6 @@ export function Login() {
     const email = (f.get('email') || '').trim();
     const password = f.get('password') || '';
     const name = (f.get('name') || '').trim();
-    const role = f.get('role') || 'user';
 
     if (create && !name) {
       return setErr('Empty spaces not allowed.');
@@ -36,7 +35,7 @@ export function Login() {
 
     try {
       const data = create
-        ? await register({ name, email, password, role })
+        ? await register({ name, email, password })
         : await login({ email, password });
 
       const redirectTo = location.state?.from;
@@ -77,35 +76,13 @@ export function Login() {
 
         <form className="compact" onSubmit={submit}>
           {create && (
-            <>
-              <input
-                name="name"
-                required
-                pattern=".*\S.*"
-                title="Empty spaces not allowed"
-                placeholder="Your full name"
-              />
-              <label style={{ display: 'block', textAlign: 'left', marginBottom: '8px' }}>
-                <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
-                  Account Role
-                </span>
-                <select
-                  name="role"
-                  defaultValue="user"
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--line)',
-                    background: '#fff',
-                    fontSize: '14px'
-                  }}
-                >
-                  <option value="user">User (Browse & Sell)</option>
-                  <option value="admin">Platform Admin</option>
-                </select>
-              </label>
-            </>
+            <input
+              name="name"
+              required
+              pattern=".*\S.*"
+              title="Empty spaces not allowed"
+              placeholder="Your full name"
+            />
           )}
           <input
             name="email"
