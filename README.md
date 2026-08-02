@@ -94,20 +94,6 @@ These weren't reproducible in this codebase as bugs:
 ### Environment note
 This sandbox couldn't execute the app to reproduce bugs live — `node_modules` in the zip contains Windows-compiled native binaries (`better-sqlite3`, `@esbuild/win32-x64`) that don't run on this Linux container, and the container has no network access to rebuild them. All fixes above were made via full static read-through of every server and client file, not guesswork. Please run `npm install && npm run seed && npm run dev` on your machine (where the native modules match your OS) and confirm.
 
----
-
-## Judge review against the assignment's evaluation criteria
-
-**1. Architecture — Strong.** Categories, fields, and category↔field wiring (`category_fields`, with per-category `required`/`conditional`/`position`) are all data, not code. Adding a new category or field is an admin API call, not a deploy. The `DynamicField` component and server-side `validateListing` both walk the same schema, so client and server never disagree about what's valid.
-
-**2. Code quality — Good, some rough edges.** Small files, clear separation (routes / db / auth / validation on the server; pages / components / context on the client). Rough edges found and fixed: dead duplicate `ProtectedSeller` export, a role-gate that hid its own error UI, and one endpoint (`register`) that didn't defend itself against a client that lies about the role it wants.
-
-**3. User experience — Good.** Draft auto-save on the sell form, conditional fields (warranty expiry), inline validation errors, a real checkout flow, and a messaging inbox go beyond the assignment's minimum. The gap was consistency when things go wrong (auth failures, dead-end redirects) — addressed above.
-
-**4. Technical implementation — Solid.** Transactional writes for listings + attributes, orders, and category-field saves; parameterized queries throughout (no SQL injection surface); bcrypt password hashing with legacy-password migration; server-side validation independent of the client. Custom HMAC session token works but isn't a standard JWT library — fine for a demo, note as a to-do for "going live" (see below).
-
-**5. Product thinking — Good, one real gap closed.** Handles sold items, own-listing guard on checkout, conditional fields, image upload with size limit. The one real product/security gap — self-serve admin accounts — is now closed.
-
 ### To actually "go live" (beyond this pass)
 - Replace the custom token scheme with a maintained JWT library (e.g. `jsonwebtoken`) or session cookies, and set a real `JWT_SECRET` via environment variable rather than the checked-in fallback.
 - Move image uploads off inline base64 (in the DB) to object storage (S3/Cloudinary) — fine for a demo, not for scale.
