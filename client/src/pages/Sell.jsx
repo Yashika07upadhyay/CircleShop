@@ -24,6 +24,14 @@ export function Sell() {
 
   useEffect(() => {
     if (id) {
+      // Clear dynamic category field errors when category changes
+      setErrors((prev) => {
+        const next = {};
+        for (const name of ['title', 'description', 'price', 'condition', 'location']) {
+          if (prev[name]) next[name] = prev[name];
+        }
+        return next;
+      });
       api('/categories/' + id + '/schema')
         .then((s) => {
           setSchema(s);
@@ -61,45 +69,100 @@ export function Sell() {
     r.readAsDataURL(f);
   };
 
+  const validateField = (name, val) => {
+    let err = '';
+    const stringVal = String(val || '');
+    if (name === 'title' || name === 'description' || name === 'location') {
+      if (!stringVal) {
+        err = 'Required';
+      } else if (!stringVal.trim()) {
+        err = 'Empty spaces not allowed';
+      }
+    } else if (name === 'price') {
+      if (val === undefined || val === null || val === '') {
+        err = 'Required';
+      } else if (!Number.isFinite(Number(val)) || Number(val) < 0) {
+        err = 'Enter a valid price';
+      }
+    }
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (err) {
+        next[name] = err;
+      } else {
+        delete next[name];
+      }
+      return next;
+    });
+  };
+
+  const validateDynamicField = (key, val, config) => {
+    let err = '';
+    const isEmpty = val === undefined || val === null || (typeof val === 'string' && val.trim() === '') || (Array.isArray(val) && !val.length);
+    if (config.required && isEmpty) {
+      if (typeof val === 'string' && val !== '' && val.trim() === '') {
+        err = 'Empty spaces not allowed';
+      } else {
+        err = 'Required';
+      }
+    }
+    const rules = config.rules || {};
+    if (val !== undefined && val !== null && !(typeof val === 'string' && val.trim() === '')) {
+      if (config.type === 'number' && (!Number.isFinite(Number(val)) || (rules.min != null && Number(val) < rules.min) || (rules.max != null && Number(val) > rules.max))) {
+        err = `Use a value between ${rules.min ?? '−∞'} and ${rules.max ?? '∞'}`;
+      }
+      if (typeof val === 'string' && ((rules.minLength && val.length < rules.minLength) || (rules.maxLength && val.length > rules.maxLength))) {
+        err = `Use ${rules.minLength ?? 0}–${rules.maxLength ?? 'more'} characters`;
+      }
+    }
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (err) {
+        next[key] = err;
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
+  };
+
+  const isFormInvalid = () => {
+    if (!id) return true;
+    if (!String(form.title || '').trim()) return true;
+    if (!String(form.description || '').trim()) return true;
+    if (!String(form.location || '').trim()) return true;
+    if (form.price === undefined || form.price === null || form.price === '' || isNaN(Number(form.price)) || Number(form.price) < 0) return true;
+
+    // Check visible dynamic fields
+    const visibleSchema = schema.filter(
+      (f) =>
+        !f.conditional ||
+        form.attributes?.[f.conditional.fieldKey] === f.conditional.equals
+    );
+    for (const f of visibleSchema) {
+      const val = form.attributes?.[f.key];
+      const isEmpty = val === undefined || val === null || (typeof val === 'string' && val.trim() === '') || (Array.isArray(val) && !val.length);
+      if (f.required && isEmpty) return true;
+
+      const rules = f.rules || {};
+      if (val !== undefined && val !== null && !(typeof val === 'string' && val.trim() === '')) {
+        if (f.type === 'number' && (!Number.isFinite(Number(val)) || (rules.min != null && Number(val) < rules.min) || (rules.max != null && Number(val) > rules.max))) return true;
+        if (typeof val === 'string' && ((rules.minLength && val.length < rules.minLength) || (rules.maxLength && val.length > rules.maxLength))) return true;
+      }
+    }
+
+    const errorKeys = Object.keys(errors).filter(k => k !== 'form' && k !== 'imageUrl');
+    if (errorKeys.length > 0) return true;
+
+    return false;
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setErrors({});
 
-    // Client-side validation — catch whitespace-only and missing fields
-    // before hitting the server so the user sees inline errors immediately.
-    const clientErrors = {};
-    if (!id) clientErrors.form = 'Please select a category before publishing.';
-
-    const titleVal = String(form.title || '');
-    if (!titleVal) {
-      clientErrors.title = 'Required';
-    } else if (!titleVal.trim()) {
-      clientErrors.title = 'Empty spaces not allowed';
-    }
-
-    const descVal = String(form.description || '');
-    if (!descVal) {
-      clientErrors.description = 'Required';
-    } else if (!descVal.trim()) {
-      clientErrors.description = 'Empty spaces not allowed';
-    }
-
-    const locVal = String(form.location || '');
-    if (!locVal) {
-      clientErrors.location = 'Required';
-    } else if (!locVal.trim()) {
-      clientErrors.location = 'Empty spaces not allowed';
-    }
-
-    if (form.price === undefined || form.price === null || form.price === '') {
-      clientErrors.price = 'Required';
-    } else if (!Number.isFinite(Number(form.price)) || Number(form.price) < 0) {
-      clientErrors.price = 'Enter a valid price';
-    }
-
-    if (Object.keys(clientErrors).length) {
-      return setErrors(clientErrors);
-    }
+    // Final sanity check before submission
+    if (isFormInvalid()) return;
 
     try {
       const d = await api('/listings', {
@@ -161,9 +224,11 @@ export function Sell() {
                     <input
                       type={k === 'price' ? 'number' : 'text'}
                       value={form[k] || ''}
-                      onChange={(e) => update(k, e.target.value)}
-                      required
-                      {...(k !== 'price' ? { pattern: ".*\\S.*", title: "Empty spaces not allowed" } : { min: "0" })}
+                      onChange={(e) => {
+                        update(k, e.target.value);
+                        validateField(k, e.target.value);
+                      }}
+                      onBlur={(e) => validateField(k, e.target.value)}
                     />
                     {errors[k] && <i>{errors[k]}</i>}
                   </label>
@@ -183,8 +248,11 @@ export function Sell() {
                   <span>Description *</span>
                   <textarea
                     value={form.description || ''}
-                    onChange={(e) => update('description', e.target.value)}
-                    required
+                    onChange={(e) => {
+                      update('description', e.target.value);
+                      validateField('description', e.target.value);
+                    }}
+                    onBlur={(e) => validateField('description', e.target.value)}
                   />
                   {errors.description && <i>{errors.description}</i>}
                 </label>
@@ -205,12 +273,14 @@ export function Sell() {
                       key={f.key}
                       f={f}
                       value={form.attributes?.[f.key]}
-                      change={(k, v) =>
+                      change={(k, v) => {
                         setForm((x) => ({
                           ...x,
                           attributes: { ...x.attributes, [k]: v }
-                        }))
-                      }
+                        }));
+                        validateDynamicField(f.key, v, f);
+                      }}
+                      onBlur={(k, v) => validateDynamicField(k, v, f)}
                       error={errors[f.key]}
                     />
                   ))}
@@ -218,7 +288,7 @@ export function Sell() {
             </section>
 
             <div className="submit">
-              <button className="button">Publish listing</button>
+              <button className="button" disabled={isFormInvalid()}>Publish listing</button>
             </div>
             {errors.form && <p className="error" style={{ marginTop: '12px' }}>{errors.form}</p>}
           </>

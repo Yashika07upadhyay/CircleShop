@@ -1,12 +1,15 @@
 import React from 'react';
 
-export function DynamicField({ f, value, change, error }) {
-  const set = (v) => change(f.key, v);
+export function DynamicField({ f, value, change, error, onBlur }) {
+  const set = (v) => {
+    change(f.key, v);
+    if (onBlur) onBlur(f.key, v);
+  };
   const common = {
     value: value || '',
     onChange: (e) => set(e.target.value),
-    placeholder: f.placeholder || '',
-    required: !!f.required
+    onBlur: (e) => onBlur && onBlur(f.key, e.target.value),
+    placeholder: f.placeholder || ''
   };
 
   return (
@@ -64,7 +67,6 @@ export function DynamicField({ f, value, change, error }) {
         <input
           type={f.type || 'text'}
           {...common}
-          {...(f.required && (f.type === 'text' || !f.type) ? { pattern: ".*\\S.*", title: "Empty spaces not allowed" } : {})}
           {...(f.type === 'date' && (f.key === 'purchase_date' || f.key.includes('purchase'))
             ? { max: new Date().toISOString().split('T')[0] }
             : {})}
