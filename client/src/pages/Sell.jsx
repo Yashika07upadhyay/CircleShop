@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useApiBusy } from '../hooks/useApiBusy';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { DynamicField } from '../components/DynamicField';
@@ -27,6 +28,7 @@ export function Sell() {
   const [schema, setSchema] = useState([]);
   const [form, setForm] = useState(() => loadDraft(user?.id));
   const [errors, setErrors] = useState({});
+  const { busy: submitting, run: runSubmit } = useApiBusy();
 
   const prevUserIdRef = useRef(user?.id);
   const prevIdRef = useRef(id);
@@ -135,21 +137,23 @@ export function Sell() {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
-    try {
-      const d = await api('/listings', {
-        method: 'POST',
-        body: JSON.stringify({ ...form, categoryId: Number(id) })
-      });
-      sessionStorage.removeItem(draftKeyForUser(user?.id));
-      setForm({ ...EMPTY_LISTING_FORM });
-      setId('');
-      setSchema([]);
-      setErrors({});
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      navigate('/listing/' + d.id, { replace: true, state: { from: '/' } });
-    } catch (x) {
-      setErrors(x.errors || { form: x.error || 'Failed to publish listing. Make sure you are logged in and try again.' });
-    }
+    await runSubmit(async () => {
+      try {
+        const d = await api('/listings', {
+          method: 'POST',
+          body: JSON.stringify({ ...form, categoryId: Number(id) })
+        });
+        sessionStorage.removeItem(draftKeyForUser(user?.id));
+        setForm({ ...EMPTY_LISTING_FORM });
+        setId('');
+        setSchema([]);
+        setErrors({});
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        navigate('/listing/' + d.id, { replace: true, state: { from: '/' } });
+      } catch (x) {
+        setErrors(x.errors || { form: x.error || 'Failed to publish listing. Make sure you are logged in and try again.' });
+      }
+    });
   };
 
   const visibleFields = visibleSchemaFields(schema, form.attributes);
@@ -269,30 +273,38 @@ export function Sell() {
               </div>
             </section>
 
-            <section className="form-section">
-              <h2>Category details</h2>
-              <div className="form-grid">
-                {visibleFields.map((f) => (
-                  <DynamicField
-                    key={f.key}
-                    f={f}
-                    value={form.attributes?.[f.key]}
-                    change={(k, v) => {
-                      setForm((x) => ({
-                        ...x,
-                        attributes: { ...x.attributes, [k]: v }
-                      }));
-                      validateDynamicField(f.key, v, f);
-                    }}
-                    onBlur={(k, v) => validateDynamicField(k, v, f)}
-                    error={errors[f.key]}
-                  />
-                ))}
-              </div>
-            </section>
+            {visibleFields.length > 0 && (
+              <section className="form-section">
+                <h2>Category details</h2>
+                <div className="form-grid">
+                  {visibleFields.map((f) => (
+                    <DynamicField
+                      key={f.key}
+                      f={f}
+                      value={form.attributes?.[f.key]}
+                      change={(k, v) => {
+                        setForm((x) => ({
+                          ...x,
+                          attributes: { ...x.attributes, [k]: v }
+                        }));
+                        validateDynamicField(f.key, v, f);
+                      }}
+                      onBlur={(k, v) => validateDynamicField(k, v, f)}
+                      error={errors[f.key]}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
 
             <div className="submit">
-              <button className="button" disabled={isFormInvalid()}>Publish listing</button>
+              <button
+                type="submit"
+                className={'button' + (submitting ? ' busy' : '')}
+                disabled={isFormInvalid() || submitting}
+              >
+                {submitting ? 'Publishing…' : 'Publish listing'}
+              </button>
             </div>
             {errors.form && <p className="error" style={{ marginTop: '12px' }}>{errors.form}</p>}
           </>

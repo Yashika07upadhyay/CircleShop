@@ -1,7 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useApiBusy } from '../hooks/useApiBusy';
 
 const FIELD_TYPES = ['text', 'textarea', 'number', 'select', 'radio', 'checkbox', 'date'];
+
+function conditionValueOptions(categoryFields, fieldKey) {
+  const field = categoryFields.find((cf) => cf.key === fieldKey);
+  if (!field) return null;
+  if (['select', 'radio', 'checkbox'].includes(field.type) && field.options?.length) {
+    return field.options;
+  }
+  return null;
+}
+
+function normalizeConditionalEquals(categoryFields, fieldKey, equals) {
+  const options = conditionValueOptions(categoryFields, fieldKey);
+  if (!options) return equals || '';
+  return options.includes(equals) ? equals : options[0] || '';
+}
 
 function readRulesFromForm(f) {
   const minVal = f.get('min');
@@ -27,6 +43,7 @@ export function Admin() {
   const [editingCategory, setEditingCategory] = useState(null);
   const [showAdminUserModal, setShowAdminUserModal] = useState(false);
   const [toast, setToast] = useState(null);
+  const { busy: apiBusy, run: runApi } = useApiBusy();
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -41,6 +58,7 @@ export function Admin() {
 
   const handleCreateAdminUser = async (e) => {
     e.preventDefault();
+    if (apiBusy) return;
     const formEl = e.currentTarget;
     const f = new FormData(formEl);
     const name = (f.get('name') || '').trim();
@@ -49,22 +67,24 @@ export function Admin() {
     if (!name) return showToast('Empty spaces not allowed.', 'error');
     if (!email) return showToast('Empty spaces not allowed.', 'error');
     if (!password.trim()) return showToast('Empty spaces not allowed.', 'error');
-    try {
-      const newUser = await api('/admin/users', {
-        method: 'POST',
-        body: JSON.stringify({
-          name,
-          email,
-          password,
-          role: f.get('role') || 'admin'
-        })
-      });
-      showToast(`Account "${newUser.email}" (${newUser.role}) created successfully!`, 'success');
-      setShowAdminUserModal(false);
-      if (formEl) formEl.reset();
-    } catch (x) {
-      showToast('Failed to create account: ' + (x?.error || x?.message || 'Error'), 'error');
-    }
+    await runApi(async () => {
+      try {
+        const newUser = await api('/admin/users', {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            email,
+            password,
+            role: f.get('role') || 'admin'
+          })
+        });
+        showToast(`Account "${newUser.email}" (${newUser.role}) created successfully!`, 'success');
+        setShowAdminUserModal(false);
+        if (formEl) formEl.reset();
+      } catch (x) {
+        showToast('Failed to create account: ' + (x?.error || x?.message || 'Error'), 'error');
+      }
+    });
   };
 
   // NOTE: this no longer shows its own toast on failure. It's called by
@@ -111,89 +131,110 @@ export function Admin() {
   };
 
   const saveSchema = async () => {
-    try {
-      await api('/admin/categories/' + activeCategory.id + '/fields', {
-        method: 'PUT',
-        body: JSON.stringify({
-          fields: categoryFields.map((f) => ({
-            fieldId: f.id,
-            required: !!f.required,
-            conditional: f.conditional || null
-          }))
-        })
-      });
-      showToast(`Category schema for "${activeCategory.name}" saved successfully!`, 'success');
-      await load(activeCategory.id);
-    } catch (x) {
-      showToast('Failed to save schema: ' + (x?.error || x?.message || 'Unknown error'), 'error');
-    }
+    if (apiBusy) return;
+    await runApi(async () => {
+      try {
+        await api('/admin/categories/' + activeCategory.id + '/fields', {
+          method: 'PUT',
+          body: JSON.stringify({
+            fields: categoryFields.map((f) => ({
+              fieldId: f.id,
+              required: !!f.required,
+              conditional: f.conditional
+                ? {
+                    fieldKey: f.conditional.fieldKey,
+                    equals: normalizeConditionalEquals(
+                      categoryFields,
+                      f.conditional.fieldKey,
+                      f.conditional.equals
+                    )
+                  }
+                : null
+            }))
+          })
+        });
+        showToast(`Category schema for "${activeCategory.name}" saved successfully!`, 'success');
+        await load(activeCategory.id);
+      } catch (x) {
+        showToast('Failed to save schema: ' + (x?.error || x?.message || 'Unknown error'), 'error');
+      }
+    });
   };
 
   const handleCreateCategory = async (e) => {
     e.preventDefault();
+    if (apiBusy) return;
     const formEl = e.currentTarget;
     const f = new FormData(formEl);
     const name = (f.get('name') || '').trim();
     if (!name) return showToast('Empty spaces not allowed.', 'error');
 
-    try {
-      const newCat = await api('/admin/categories', {
-        method: 'POST',
-        body: JSON.stringify({
-          name,
-          icon: (f.get('icon') || '').trim() || '◈',
-          description: (f.get('description') || '').trim()
-        })
-      });
-      setShowCategoryModal(false);
-      if (formEl) formEl.reset();
-      showToast(`Category "${newCat.name}" created and selected!`, 'success');
-      await load(newCat.id);
-    } catch (x) {
-      showToast('Category creation failed: ' + (x?.error || x?.message || 'Error'), 'error');
-    }
+    await runApi(async () => {
+      try {
+        const newCat = await api('/admin/categories', {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            icon: (f.get('icon') || '').trim() || '◈',
+            description: (f.get('description') || '').trim()
+          })
+        });
+        setShowCategoryModal(false);
+        if (formEl) formEl.reset();
+        showToast(`Category "${newCat.name}" created and selected!`, 'success');
+        await load(newCat.id);
+      } catch (x) {
+        showToast('Category creation failed: ' + (x?.error || x?.message || 'Error'), 'error');
+      }
+    });
   };
 
   const handleUpdateCategory = async (e) => {
     e.preventDefault();
-    if (!editingCategory) return;
+    if (!editingCategory || apiBusy) return;
     const formEl = e.currentTarget;
     const f = new FormData(formEl);
     const name = (f.get('name') || '').trim();
     if (!name) return showToast('Empty spaces not allowed.', 'error');
 
-    try {
-      const updated = await api('/admin/categories/' + editingCategory.id, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          name,
-          icon: (f.get('icon') || '').trim() || '◈',
-          description: (f.get('description') || '').trim()
-        })
-      });
-      setEditingCategory(null);
-      showToast(`Category "${updated.name}" updated successfully!`, 'success');
-      await load(updated.id);
-    } catch (x) {
-      showToast('Failed to update category: ' + (x?.error || x?.message || 'Error'), 'error');
-    }
+    await runApi(async () => {
+      try {
+        const updated = await api('/admin/categories/' + editingCategory.id, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name,
+            icon: (f.get('icon') || '').trim() || '◈',
+            description: (f.get('description') || '').trim()
+          })
+        });
+        setEditingCategory(null);
+        showToast(`Category "${updated.name}" updated successfully!`, 'success');
+        await load(updated.id);
+      } catch (x) {
+        showToast('Failed to update category: ' + (x?.error || x?.message || 'Error'), 'error');
+      }
+    });
   };
 
   const handleToggleCategoryActive = async (cat) => {
-    try {
-      await api('/admin/categories/' + cat.id, {
-        method: 'PATCH',
-        body: JSON.stringify({ active: !cat.active })
-      });
-      showToast(`"${cat.name}" is now ${!cat.active ? 'active' : 'inactive'}.`, 'info');
-      await load(activeCategory.id);
-    } catch (x) {
-      showToast('Failed to update category: ' + (x?.error || x?.message || 'Error'), 'error');
-    }
+    if (apiBusy) return;
+    await runApi(async () => {
+      try {
+        await api('/admin/categories/' + cat.id, {
+          method: 'PATCH',
+          body: JSON.stringify({ active: !cat.active })
+        });
+        showToast(`"${cat.name}" is now ${!cat.active ? 'active' : 'inactive'}.`, 'info');
+        await load(activeCategory.id);
+      } catch (x) {
+        showToast('Failed to update category: ' + (x?.error || x?.message || 'Error'), 'error');
+      }
+    });
   };
 
   const handleCreateField = async (e) => {
     e.preventDefault();
+    if (apiBusy) return;
     const formEl = e.currentTarget;
     const f = new FormData(formEl);
     const optionsRaw = f.get('options') || '';
@@ -202,30 +243,32 @@ export function Admin() {
     if (!label) return showToast('Empty spaces not allowed.', 'error');
     if (!rawKey) return showToast('Empty spaces not allowed.', 'error');
 
-    try {
-      const createdField = await api('/admin/fields', {
-        method: 'POST',
-        body: JSON.stringify({
-          label,
-          key: rawKey,
-          type: f.get('type'),
-          placeholder: (f.get('placeholder') || '').trim(),
-          helpText: (f.get('helpText') || '').trim(),
-          options: optionsRaw.split(',').map((s) => s.trim()).filter(Boolean),
-          rules: readRulesFromForm(f)
-        })
-      });
-      if (formEl) formEl.reset();
-      showToast(`Field "${createdField.label || label}" (${createdField.key}) created and added to library!`, 'success');
-      await load(activeCategory.id);
-    } catch (x) {
-      showToast(x?.error || x?.message || 'Failed to create field', 'error');
-    }
+    await runApi(async () => {
+      try {
+        const createdField = await api('/admin/fields', {
+          method: 'POST',
+          body: JSON.stringify({
+            label,
+            key: rawKey,
+            type: f.get('type'),
+            placeholder: (f.get('placeholder') || '').trim(),
+            helpText: (f.get('helpText') || '').trim(),
+            options: optionsRaw.split(',').map((s) => s.trim()).filter(Boolean),
+            rules: readRulesFromForm(f)
+          })
+        });
+        if (formEl) formEl.reset();
+        showToast(`Field "${createdField.label || label}" (${createdField.key}) created and added to library!`, 'success');
+        await load(activeCategory.id);
+      } catch (x) {
+        showToast(x?.error || x?.message || 'Failed to create field', 'error');
+      }
+    });
   };
 
   const handleUpdateField = async (e) => {
     e.preventDefault();
-    if (!editingField) return;
+    if (!editingField || apiBusy) return;
     const formEl = e.currentTarget;
     const f = new FormData(formEl);
     const optionsRaw = f.get('options') || '';
@@ -234,36 +277,41 @@ export function Admin() {
     if (!label) return showToast('Empty spaces not allowed.', 'error');
     if (!rawKey) return showToast('Empty spaces not allowed.', 'error');
 
-    try {
-      const updated = await api('/admin/fields/' + editingField.id, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          label,
-          key: rawKey,
-          type: f.get('type'),
-          placeholder: (f.get('placeholder') || '').trim(),
-          helpText: (f.get('helpText') || '').trim(),
-          options: optionsRaw.split(',').map((s) => s.trim()).filter(Boolean),
-          rules: readRulesFromForm(f)
-        })
-      });
-      setEditingField(null);
-      showToast(`Field "${updated.label || label}" (${updated.key}) updated successfully.`, 'success');
-      await load(activeCategory.id);
-    } catch (x) {
-      showToast(x?.error || x?.message || 'Failed to update field', 'error');
-    }
+    await runApi(async () => {
+      try {
+        const updated = await api('/admin/fields/' + editingField.id, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            label,
+            key: rawKey,
+            type: f.get('type'),
+            placeholder: (f.get('placeholder') || '').trim(),
+            helpText: (f.get('helpText') || '').trim(),
+            options: optionsRaw.split(',').map((s) => s.trim()).filter(Boolean),
+            rules: readRulesFromForm(f)
+          })
+        });
+        setEditingField(null);
+        showToast(`Field "${updated.label || label}" (${updated.key}) updated successfully.`, 'success');
+        await load(activeCategory.id);
+      } catch (x) {
+        showToast(x?.error || x?.message || 'Failed to update field', 'error');
+      }
+    });
   };
 
   const handleDeleteField = async (field) => {
+    if (apiBusy) return;
     if (!window.confirm(`Delete the reusable field "${field.label}"? This can't be undone.`)) return;
-    try {
-      await api('/admin/fields/' + field.id, { method: 'DELETE' });
-      showToast(`Field "${field.label}" deleted from library.`, 'info');
-      await load(activeCategory.id);
-    } catch (x) {
-      showToast(x?.error || 'Failed to delete field', 'error');
-    }
+    await runApi(async () => {
+      try {
+        await api('/admin/fields/' + field.id, { method: 'DELETE' });
+        showToast(`Field "${field.label}" deleted from library.`, 'info');
+        await load(activeCategory.id);
+      } catch (x) {
+        showToast(x?.error || 'Failed to delete field', 'error');
+      }
+    });
   };
 
   return (
@@ -277,6 +325,7 @@ export function Admin() {
           <button
             className="button"
             style={{ width: '100%', marginBottom: '14px', fontSize: '13px', padding: '8px 12px' }}
+            disabled={apiBusy}
             onClick={() => setShowCategoryModal(true)}
           >
             + New Category

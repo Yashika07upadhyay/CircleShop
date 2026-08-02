@@ -168,6 +168,10 @@ h2 {
 
 .button:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.button.busy:not(:disabled) {
   cursor: wait;
 }
 
@@ -737,6 +741,11 @@ dd {
   padding: 11px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.compact button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .field-list {
