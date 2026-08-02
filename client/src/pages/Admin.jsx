@@ -43,13 +43,19 @@ export function Admin() {
     e.preventDefault();
     const formEl = e.currentTarget;
     const f = new FormData(formEl);
+    const name = (f.get('name') || '').trim();
+    const email = (f.get('email') || '').trim();
+    const password = (f.get('password') || '');
+    if (!name) return showToast('Empty spaces not allowed.', 'error');
+    if (!email) return showToast('Empty spaces not allowed.', 'error');
+    if (!password.trim()) return showToast('Empty spaces not allowed.', 'error');
     try {
       const newUser = await api('/admin/users', {
         method: 'POST',
         body: JSON.stringify({
-          name: f.get('name'),
-          email: f.get('email'),
-          password: f.get('password'),
+          name,
+          email,
+          password,
           role: f.get('role') || 'admin'
         })
       });
@@ -128,13 +134,13 @@ export function Admin() {
     const formEl = e.currentTarget;
     const f = new FormData(formEl);
     const name = (f.get('name') || '').trim();
-    if (!name) return;
+    if (!name) return showToast('Empty spaces not allowed.', 'error');
 
     try {
       const newCat = await api('/admin/categories', {
         method: 'POST',
         body: JSON.stringify({
-          name: name,
+          name,
           icon: (f.get('icon') || '').trim() || '◈',
           description: (f.get('description') || '').trim()
         })
@@ -154,13 +160,13 @@ export function Admin() {
     const formEl = e.currentTarget;
     const f = new FormData(formEl);
     const name = (f.get('name') || '').trim();
-    if (!name) return;
+    if (!name) return showToast('Empty spaces not allowed.', 'error');
 
     try {
       const updated = await api('/admin/categories/' + editingCategory.id, {
         method: 'PATCH',
         body: JSON.stringify({
-          name: name,
+          name,
           icon: (f.get('icon') || '').trim() || '◈',
           description: (f.get('description') || '').trim()
         })
@@ -193,12 +199,14 @@ export function Admin() {
     const optionsRaw = f.get('options') || '';
     const label = (f.get('label') || '').trim();
     const rawKey = (f.get('key') || '').trim();
+    if (!label) return showToast('Empty spaces not allowed.', 'error');
+    if (!rawKey) return showToast('Empty spaces not allowed.', 'error');
 
     try {
       const createdField = await api('/admin/fields', {
         method: 'POST',
         body: JSON.stringify({
-          label: label,
+          label,
           key: rawKey,
           type: f.get('type'),
           placeholder: (f.get('placeholder') || '').trim(),
@@ -223,12 +231,14 @@ export function Admin() {
     const optionsRaw = f.get('options') || '';
     const label = (f.get('label') || '').trim();
     const rawKey = (f.get('key') || '').trim();
+    if (!label) return showToast('Empty spaces not allowed.', 'error');
+    if (!rawKey) return showToast('Empty spaces not allowed.', 'error');
 
     try {
       const updated = await api('/admin/fields/' + editingField.id, {
         method: 'PATCH',
         body: JSON.stringify({
-          label: label,
+          label,
           key: rawKey,
           type: f.get('type'),
           placeholder: (f.get('placeholder') || '').trim(),
@@ -470,8 +480,20 @@ export function Admin() {
           <h2>Create reusable field</h2>
           <p className="muted">Define fields with custom validation rules, default values, placeholders, and help text.</p>
           <form className="compact" onSubmit={handleCreateField}>
-            <input name="label" required placeholder="Field label (e.g. Warranty Period)" />
-            <input name="key" required placeholder="Stable key (e.g. warranty_period)" />
+            <input
+              name="label"
+              required
+              pattern=".*\S.*"
+              title="Empty spaces not allowed"
+              placeholder="Field label (e.g. Warranty Period)"
+            />
+            <input
+              name="key"
+              required
+              pattern=".*\S.*"
+              title="Empty spaces not allowed"
+              placeholder="Stable key (e.g. warranty_period)"
+            />
             <select name="type">
               {FIELD_TYPES.map((x) => (
                 <option key={x} value={x}>
@@ -519,7 +541,13 @@ export function Admin() {
             <form className="compact" onSubmit={handleCreateCategory}>
               <label className="field">
                 <span>Category Name *</span>
-                <input name="name" required placeholder="e.g. Furniture, Books, Gaming" />
+                <input
+                  name="name"
+                  required
+                  pattern=".*\S.*"
+                  title="Category name cannot be empty or only spaces"
+                  placeholder="e.g. Furniture, Books, Gaming"
+                />
               </label>
               <label className="field">
                 <span>Icon</span>
@@ -553,7 +581,13 @@ export function Admin() {
             <form className="compact" onSubmit={handleUpdateCategory}>
               <label className="field">
                 <span>Category Name</span>
-                <input name="name" required defaultValue={editingCategory.name} />
+                <input
+                  name="name"
+                  required
+                  pattern=".*\S.*"
+                  title="Category name cannot be empty or only spaces"
+                  defaultValue={editingCategory.name}
+                />
               </label>
               <label className="field">
                 <span>Icon</span>
@@ -584,11 +618,23 @@ export function Admin() {
             <form className="compact" onSubmit={handleUpdateField}>
               <label className="field">
                 <span>Field Label</span>
-                <input name="label" required defaultValue={editingField.label} />
+                <input
+                  name="label"
+                  required
+                  pattern=".*\S.*"
+                  title="Empty spaces not allowed"
+                  defaultValue={editingField.label}
+                />
               </label>
               <label className="field">
                 <span>Stable Key</span>
-                <input name="key" required defaultValue={editingField.key} />
+                <input
+                  name="key"
+                  required
+                  pattern=".*\S.*"
+                  title="Empty spaces not allowed"
+                  defaultValue={editingField.key}
+                />
               </label>
               <label className="field">
                 <span>Field Type</span>
@@ -656,15 +702,36 @@ export function Admin() {
             <form className="compact" onSubmit={handleCreateAdminUser}>
               <label className="field">
                 <span>Full Name</span>
-                <input name="name" required placeholder="e.g. Admin User" />
+                <input
+                  name="name"
+                  required
+                  pattern=".*\S.*"
+                  title="Empty spaces not allowed"
+                  placeholder="e.g. Admin User"
+                />
               </label>
               <label className="field">
                 <span>Email Address</span>
-                <input name="email" type="email" required placeholder="admin@example.com" />
+                <input
+                  name="email"
+                  type="email"
+                  required
+                  pattern=".*\S.*"
+                  title="Empty spaces not allowed"
+                  placeholder="admin@example.com"
+                />
               </label>
               <label className="field">
                 <span>Password (6+ chars)</span>
-                <input name="password" type="password" minLength={6} required placeholder="Password" />
+                <input
+                  name="password"
+                  type="password"
+                  minLength={6}
+                  required
+                  pattern=".*\S.*"
+                  title="Empty spaces not allowed"
+                  placeholder="Password"
+                />
               </label>
               <label className="field">
                 <span>Account Role</span>

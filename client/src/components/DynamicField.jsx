@@ -5,7 +5,8 @@ export function DynamicField({ f, value, change, error }) {
   const common = {
     value: value || '',
     onChange: (e) => set(e.target.value),
-    placeholder: f.placeholder || ''
+    placeholder: f.placeholder || '',
+    required: !!f.required
   };
 
   return (
@@ -63,6 +64,7 @@ export function DynamicField({ f, value, change, error }) {
         <input
           type={f.type || 'text'}
           {...common}
+          {...(f.required && (f.type === 'text' || !f.type) ? { pattern: ".*\\S.*", title: "Empty spaces not allowed" } : {})}
           {...(f.type === 'date' && (f.key === 'purchase_date' || f.key.includes('purchase'))
             ? { max: new Date().toISOString().split('T')[0] }
             : {})}

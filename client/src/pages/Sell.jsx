@@ -64,6 +64,43 @@ export function Sell() {
   const submit = async (e) => {
     e.preventDefault();
     setErrors({});
+
+    // Client-side validation — catch whitespace-only and missing fields
+    // before hitting the server so the user sees inline errors immediately.
+    const clientErrors = {};
+    if (!id) clientErrors.form = 'Please select a category before publishing.';
+
+    const titleVal = String(form.title || '');
+    if (!titleVal) {
+      clientErrors.title = 'Required';
+    } else if (!titleVal.trim()) {
+      clientErrors.title = 'Empty spaces not allowed';
+    }
+
+    const descVal = String(form.description || '');
+    if (!descVal) {
+      clientErrors.description = 'Required';
+    } else if (!descVal.trim()) {
+      clientErrors.description = 'Empty spaces not allowed';
+    }
+
+    const locVal = String(form.location || '');
+    if (!locVal) {
+      clientErrors.location = 'Required';
+    } else if (!locVal.trim()) {
+      clientErrors.location = 'Empty spaces not allowed';
+    }
+
+    if (form.price === undefined || form.price === null || form.price === '') {
+      clientErrors.price = 'Required';
+    } else if (!Number.isFinite(Number(form.price)) || Number(form.price) < 0) {
+      clientErrors.price = 'Enter a valid price';
+    }
+
+    if (Object.keys(clientErrors).length) {
+      return setErrors(clientErrors);
+    }
+
     try {
       const d = await api('/listings', {
         method: 'POST',
@@ -125,6 +162,8 @@ export function Sell() {
                       type={k === 'price' ? 'number' : 'text'}
                       value={form[k] || ''}
                       onChange={(e) => update(k, e.target.value)}
+                      required
+                      {...(k !== 'price' ? { pattern: ".*\\S.*", title: "Empty spaces not allowed" } : { min: "0" })}
                     />
                     {errors[k] && <i>{errors[k]}</i>}
                   </label>
@@ -145,6 +184,7 @@ export function Sell() {
                   <textarea
                     value={form.description || ''}
                     onChange={(e) => update('description', e.target.value)}
+                    required
                   />
                   {errors.description && <i>{errors.description}</i>}
                 </label>

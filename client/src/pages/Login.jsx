@@ -13,10 +13,26 @@ export function Login() {
     e.preventDefault();
     setErr('');
     const f = new FormData(e.currentTarget);
-    const email = f.get('email');
-    const password = f.get('password');
-    const name = f.get('name');
+    const email = (f.get('email') || '').trim();
+    const password = f.get('password') || '';
+    const name = (f.get('name') || '').trim();
     const role = f.get('role') || 'user';
+
+    if (create && !name) {
+      return setErr('Empty spaces not allowed.');
+    }
+    if (!email) {
+      return setErr('Empty spaces not allowed.');
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      return setErr('Enter a valid email address.');
+    }
+    if (!password || !password.trim()) {
+      return setErr('Empty spaces not allowed.');
+    }
+    if (password.length < 6) {
+      return setErr('Password must be at least 6 characters.');
+    }
 
     try {
       const data = create
@@ -62,7 +78,13 @@ export function Login() {
         <form className="compact" onSubmit={submit}>
           {create && (
             <>
-              <input name="name" required placeholder="Your full name" />
+              <input
+                name="name"
+                required
+                pattern=".*\S.*"
+                title="Empty spaces not allowed"
+                placeholder="Your full name"
+              />
               <label style={{ display: 'block', textAlign: 'left', marginBottom: '8px' }}>
                 <span style={{ fontSize: '12px', color: 'var(--muted)', display: 'block', marginBottom: '4px' }}>
                   Account Role
@@ -89,6 +111,8 @@ export function Login() {
             name="email"
             required
             type="email"
+            pattern=".*\S.*"
+            title="Empty spaces not allowed"
             placeholder="Email address"
           />
           <input
@@ -96,6 +120,8 @@ export function Login() {
             required
             minLength={6}
             type="password"
+            pattern=".*\S.*"
+            title="Empty spaces not allowed"
             placeholder="Password (6+ characters)"
           />
 

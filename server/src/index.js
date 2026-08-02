@@ -264,8 +264,20 @@ app.get('/api/admin/users', requireRole('admin'), (_, res) => {
 
 app.post('/api/admin/users', requireRole('admin'), (req, res) => {
   const { name, email, password, role = 'admin' } = req.body;
-  if (!name?.trim() || !/^\S+@\S+\.\S+$/.test(email || '') || String(password || '').length < 6) {
-    return res.status(400).json({ error: 'Enter a valid name, email, and password (6+ characters).' });
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'Empty spaces not allowed.' });
+  }
+  if (!email || !email.trim()) {
+    return res.status(400).json({ error: 'Empty spaces not allowed.' });
+  }
+  if (!/^\S+@\S+\.\S+$/.test(email)) {
+    return res.status(400).json({ error: 'Enter a valid email address.' });
+  }
+  if (!password || !password.trim()) {
+    return res.status(400).json({ error: 'Empty spaces not allowed.' });
+  }
+  if (String(password).length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
   }
   try {
     const hashedPassword = hashPassword(password);
@@ -447,8 +459,20 @@ app.put('/api/admin/categories/:id/fields', requireRole('admin'), (req, res) => 
 // Authentication Endpoints
 app.post('/api/auth/register', (req, res) => {
   const { name, email, password, role } = req.body;
-  if (!name?.trim() || !/^\S+@\S+\.\S+$/.test(email || '') || String(password || '').length < 6) {
-    return res.status(400).json({ error: 'Enter a valid name, email, and password (6+ characters).' });
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'Empty spaces not allowed.' });
+  }
+  if (!email || !email.trim()) {
+    return res.status(400).json({ error: 'Empty spaces not allowed.' });
+  }
+  if (!/^\S+@\S+\.\S+$/.test(email)) {
+    return res.status(400).json({ error: 'Enter a valid email address.' });
+  }
+  if (!password || !password.trim()) {
+    return res.status(400).json({ error: 'Empty spaces not allowed.' });
+  }
+  if (String(password).length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters.' });
   }
 
   try {
